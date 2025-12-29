@@ -2,6 +2,7 @@ import http.client
 import os
 import unittest
 from urllib.request import urlopen
+from urllib.error import HTTPError
 
 import pytest
 
@@ -35,7 +36,7 @@ class TestApi(unittest.TestCase):
             response.read().decode(), "3", "ERROR SUBSTRACT"
         )
 
-	def test_api_multiply(self):
+    def test_api_multiply(self):
         url = f"{BASE_URL}/calc/multiply/3/3"
         response = urlopen(url, timeout=DEFAULT_TIMEOUT)
         self.assertEqual(
@@ -44,8 +45,8 @@ class TestApi(unittest.TestCase):
         self.assertEqual(
             response.read().decode(), "9", "ERROR MULTIPLY"
         )
-	
-	def test_api_divide(self):
+
+    def test_api_divide(self):
         url = f"{BASE_URL}/calc/divide/12/3"
         response = urlopen(url, timeout=DEFAULT_TIMEOUT)
         self.assertEqual(
@@ -55,14 +56,13 @@ class TestApi(unittest.TestCase):
             response.read().decode(), "4.0", "ERROR DIVIDE"
         )
 
-	def test_api_divide_by_zero_returns_406(self):
+    def test_api_divide_by_zero_returns_406(self):
         url = f"{BASE_URL}/calc/divide/12/0"
         with self.assertRaises(HTTPError) as ctx:
             urlopen(url, timeout=DEFAULT_TIMEOUT)
 
-        self.assertEqual(ctx.exception.code, http.client.NOT_ACCEPTABLE, "ERROR DIVIDE BY ZERO",
-        )
-		
+        self.assertEqual(ctx.exception.code, http.client.NOT_ACCEPTABLE, "ERROR DIVIDE BY ZERO")
+
     def test_api_sqrt(self):
         url = f"{BASE_URL_MOCK}/calc/sqrt/64"
         response = urlopen(url, timeout=DEFAULT_TIMEOUT)
