@@ -7,7 +7,9 @@ pipeline {
         stage('Get Code') {
             steps {
                 //Obtener código de repositorio
-                git 'https://github.com/PabloBin/helloworld.git'
+                checkout scm   // respeta la rama configurada en el job
+                bat 'git rev-parse --abbrev-ref HEAD'
+                bat 'git log -1 --oneline'
                 stash name: 'source', includes: '**/*'
             }
         }
