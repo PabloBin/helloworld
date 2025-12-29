@@ -75,7 +75,7 @@ pipeline {
                             // 3) Ejecutar las pruebas REST
                             bat '''
                                 set PYTHONPATH=%WORKSPACE%
-                                "C:\\Program Files\\Python312\\python.exe" -m pytest -o junit_suite_name=unit --junitxml=result-rest.xml test\\rest
+                                "C:\\Program Files\\Python312\\python.exe" -m pytest -o junit_suite_name=rest --junitxml=result-rest.xml test\\rest
                             ''' 
                             
                             // 4) Guardar el XML de resultados
@@ -102,6 +102,7 @@ pipeline {
             steps {
                 unstash name:'unit-test'
                 unstash name:'rest-test'
+				archiveArtifacts artifacts: 'result*.xml', fingerprint: true
                 junit 'result*.xml'
             }
         }
