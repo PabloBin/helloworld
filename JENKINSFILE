@@ -1,0 +1,109 @@
+pipeline {
+    agent any
+    
+    options { skipDefaultCheckout() }
+    
+    stages {
+        stage('Get Code') {
+            steps {
+                //Obtener código de repositorio
+                git 'https://github.com/PabloBin/helloworld.git'
+                stash name: 'source', includes: '**/*'
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo 'Python no necesita compilarse'
+                echo WORKSPACE
+                bat 'dir'
+            }
+        }
+        
+        stage('Tests') {
+            parallel {
+                stage('Unit') {
+                    agent {label 'Agente_Windows_2'}
+                    steps {
+                        unstash name:'source'
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                             // 1) Ejecutar las pruebas UNIT
+                            bat '''
+                                set PYTHONPATH=%WORKSPACE%
+                                "C:\\Program Files\\Python312\\python.exe" -m pytest --junitxml=result-unit.xml test\\unit
+                            '''  
+                            
+                            // 2) Guardar el XML de resultados
+                            stash name: 'unit-test', includes: 'result-unit.xml'
+                            deleteDir()
+                        }
+                    }
+                }
+                stage('Rest') {
+                    agent {label 'Agente_Windows_1'}
+                    steps {
+                        unstash name:'source'
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            // 1) Arrancar Flask y WireMock en background
+                            bat '''
+                                set FLASK_APP=app\\api.py
+                                start "FLASK_JENKINS" "C:\\Program Files\\Python312\\python.exe" -m flask run
+                
+                                start "WIREMOCK_JENKINS" java -jar "D:\\MIS DOCUMENTOS\\_CURSOS\\UNIR\\UTILS\\WIREMOCK\\wiremock-standalone-3.13.2.jar" --port 9090 --root-dir test\\wiremock
+                            '''
+                
+                            // 2) Esperar hasta que ambos servicios respondan
+                            timeout(time: 1, unit: 'MINUTES') {   // máx 1 minuto
+                                script {
+                                    waitUntil {
+                                        def status = bat(
+                                            returnStatus: true,
+                                            script: '''
+                                                rem Comprobar Flask (puerto 5000)
+                                                curl -s http://localhost:5000/ >NUL 2>&1 || exit /b 1
+                
+                                                rem Comprobar WireMock (puerto 9090)
+                                                curl -s http://localhost:9090/__admin/ >NUL 2>&1 || exit /b 1
+                                            '''
+                                        )
+                                        // status == 0 => los dos han respondido, salimos del waitUntil
+                                        return (status == 0)
+                                    }
+                                }
+                            }
+                
+                            // 3) Ejecutar las pruebas REST
+                            bat '''
+                                set PYTHONPATH=%WORKSPACE%
+                                "C:\\Program Files\\Python312\\python.exe" -m pytest --junitxml=result-rest.xml test\\rest
+                            ''' 
+                            
+                            // 4) Guardar el XML de resultados
+                            stash name: 'unit-rest', includes: 'result-rest.xml'
+                            
+                            // 5) Detener Flask y WireMock
+                            bat '''
+                                rem Matar ventana/procesos de Flask
+                                taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS" /T >NUL 2>&1 || echo Flask ya parado
+                    
+                                rem Matar ventana/procesos de WireMock
+                                taskkill /F /FI "WINDOWTITLE eq WIREMOCK_JENKINS" /T >NUL 2>&1 || echo WireMock ya parado
+                            '''
+                    
+                            // 6) Borrar workspace del agente REST
+                            deleteDir()
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Results') {
+            steps {
+                unstash name:'unit-test'
+                unstash name:'unit-rest'
+                junit 'result*.xml'
+            }
+        }
+    }
+}
