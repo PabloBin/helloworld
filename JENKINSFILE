@@ -30,7 +30,7 @@ pipeline {
                              // 1) Ejecutar las pruebas UNIT
                             bat '''
                                 set PYTHONPATH=%WORKSPACE%
-                                "C:\\Program Files\\Python312\\python.exe" -m pytest --junitxml=result-unit.xml test\\unit
+                                "C:\\Program Files\\Python312\\python.exe" -m pytest -o junit_suite_name=unit --junitxml=result-unit.xml test\\unit
                             '''  
                             
                             // 2) Guardar el XML de resultados
@@ -75,7 +75,7 @@ pipeline {
                             // 3) Ejecutar las pruebas REST
                             bat '''
                                 set PYTHONPATH=%WORKSPACE%
-                                "C:\\Program Files\\Python312\\python.exe" -m pytest --junitxml=result-rest.xml test\\rest
+                                "C:\\Program Files\\Python312\\python.exe" -m pytest -o junit_suite_name=unit --junitxml=result-rest.xml test\\rest
                             ''' 
                             
                             // 4) Guardar el XML de resultados
