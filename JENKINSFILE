@@ -79,7 +79,7 @@ pipeline {
                             ''' 
                             
                             // 4) Guardar el XML de resultados
-                            stash name: 'unit-rest', includes: 'result-rest.xml'
+                            stash name: 'rest-test', includes: 'result-rest.xml'
                             
                             // 5) Detener Flask y WireMock
                             bat '''
@@ -101,7 +101,7 @@ pipeline {
         stage('Results') {
             steps {
                 unstash name:'unit-test'
-                unstash name:'unit-rest'
+                unstash name:'rest-test'
                 junit 'result*.xml'
             }
         }
