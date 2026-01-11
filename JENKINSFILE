@@ -7,7 +7,7 @@ pipeline {
         stage('Get Code') {
             steps {
                 // Limpiar workspace del agente Get Code
-                //deleteDir()
+                deleteDir()
                 
                 //Obtener código de repositorio
                 checkout scm   // respeta la rama configurada en el job
@@ -109,7 +109,7 @@ pipeline {
         stage('Results') {
             steps {
                 // 1) Limpiar workspace del agente RESULTS
-                //deleteDir()
+                deleteDir()
                 
                 // 2) obtenemos unit-test
                 unstash name:'unit-test'
