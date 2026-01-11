@@ -45,7 +45,7 @@ pipeline {
                     agent {label 'Agente_Windows_1'}
                     steps {
                         // 1) Limpiar workspace del agente REST
-                        //deleteDir()
+                        deleteDir()
                             
                         unstash name:'source'
                         
