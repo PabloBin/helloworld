@@ -10,15 +10,12 @@ pipeline {
                 checkout scm   // respeta la rama configurada en el job
                 bat 'git rev-parse --abbrev-ref HEAD'
                 bat 'git log -1 --oneline'
+                
+                //Guarda el código
                 stash name: 'source', includes: '**/*'
-            }
-        }
-        
-        stage('Build') {
-            steps {
-                echo 'Python no necesita compilarse'
-                echo WORKSPACE
-                bat 'dir'
+                
+                // Borrar workspace del agente Get Code
+                deleteDir()
             }
         }
         
@@ -38,8 +35,8 @@ pipeline {
                             // 2) Guardar el XML de resultados
                             stash name: 'unit-test', includes: 'result-unit.xml'
                             
-                            // 6) Borrar workspace del agente UNIT
-                            //deleteDir()
+                            // 3) Borrar workspace del agente UNIT
+                            deleteDir()
                         }
                     }
                 }
@@ -102,7 +99,7 @@ pipeline {
                             stash name: 'rest-test', includes: 'result-rest.xml', allowEmpty: true
                             
                             // Limpiar workspace del agente REST
-                            //deleteDir()
+                            deleteDir()
                         }
                     }
                 }
@@ -111,7 +108,7 @@ pipeline {
         
         stage('Results') {
             steps {
-                // Siempre tenemos unit-test
+                // obtenemos unit-test
                 unstash name:'unit-test'
                 
                 // rest-test puede no existir si la stage Rest ha fallado
