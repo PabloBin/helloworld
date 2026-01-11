@@ -42,65 +42,66 @@ pipeline {
                     }
                 }
                 stage('Rest') {
-                    agent {label 'Agente_Windows_1'}
-                    
+                    agent { label 'Agente_Windows_1' }
+
                     steps {
-                        // 1) Limpiar workspace del agente REST
-                        //deleteDir()
-                            
-                        unstash name:'source'
-                        
-                        // 2) Arrancar Flask y WireMock en background
-                        bat '''
-                            set FLASK_APP=app\\api.py
-                            start "FLASK_JENKINS" "C:\\Program Files\\Python312\\python.exe" -m flask run
-                            
-                            start "WIREMOCK_JENKINS" java -jar "D:\\MIS DOCUMENTOS\\_CURSOS\\UNIR\\UTILS\\WIREMOCK\\wiremock-standalone-3.13.2.jar" --port 9090 --root-dir test\\wiremock
-                        '''
-                        
-                        // 3) Esperar hasta que ambos servicios respondan
-                            timeout(time: 1, unit: 'MINUTES') {   // máx 1 minuto
-                            script {
-                                waitUntil {
-                                    def status = bat(
-                                        returnStatus: true,
-                                        script: '''
-                                            rem Comprobar Flask (puerto 5000)
-                                            curl -s http://localhost:5000/ >NUL 2>&1 || exit /b 1
-                                            
-                                            rem Comprobar WireMock (puerto 9090)
-                                            curl -s http://localhost:9090/__admin/ >NUL 2>&1 || exit /b 1
-                                        '''
-                                    )
-                                    // status == 0 => los dos han respondido, salimos del waitUntil
-                                    return (status == 0)
-                                }
-                            }
-                        }
-                        
-                        // 4) Ejecutar las pruebas REST
+                        // Limpias workspace al entrar si quieres
+                        deleteDir()
+                        unstash name: 'source'
+
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                             bat '''
-                                set PYTHONPATH=%WORKSPACE%
+                                @echo off
+                                rem === 1) Arrancar Flask y WireMock en background ===
+                                set FLASK_APP=app\\api.py
+
+                                start "" /B "C:\\Program Files\\Python312\\python.exe" -m flask run
+                                start "" /B java -jar "D:\\MIS DOCUMENTOS\\_CURSOS\\UNIR\\UTILS\\WIREMOCK\\wiremock-standalone-3.13.2.jar" --port 9090 --root-dir test\\wiremock
+
+                                rem === 2) Esperar a que Flask (5000) y WireMock (9090) estén levantados ===
+                                setlocal enabledelayedexpansion
+                                set /a retries=0
+                                :wait_loop
+
+                                curl -s http://localhost:5000/  >NUL 2>&1 || (
+                                    set /a retries+=1
+                                    if !retries! GEQ 40 (
+                                        echo Flask no responde tras 40 intentos
+                                        goto :cleanup_and_fail
+                                    )
+                                    timeout /t 1 >NUL
+                                    goto wait_loop
+                                )
+
+                                curl -s http://localhost:9090/__admin/ >NUL 2>&1 || (
+                                    set /a retries+=1
+                                    if !retries! GEQ 40 (
+                                        echo WireMock no responde tras 40 intentos
+                                        goto :cleanup_and_fail
+                                    )
+                                    timeout /t 1 >NUL
+                                    goto wait_loop
+                                )
+
+                                rem === 3) Ejecutar tests REST ===
                                 "C:\\Program Files\\Python312\\python.exe" -m pytest -o junit_suite_name=rest --junitxml=result-rest.xml test\\rest
-                            '''
-                            
-                            // 2) Intentar guardar el resultado REST, aunque esté vacío (allowEmpty evita que falle si no hay result-rest.xml)
-                            stash name: 'rest-test', includes: 'result-rest.xml', allowEmpty: true
-                        }
-                    }
-                    
-                    post {
-                        always {
-                            // 1) Cerrar siempre los servicios (Flask y WireMock)
-                            bat '''
-                                rem Matar ventana/procesos de Flask
-                                taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS" /T >NUL 2>&1 || echo Flask ya parado
-                                
-                                rem Matar ventana/procesos de WireMock
-                                taskkill /F /FI "WINDOWTITLE eq WIREMOCK_JENKINS" /T >NUL 2>&1 || echo WireMock ya parado
+                                set TEST_ERROR=%ERRORLEVEL%
+
+                                rem === 4) Limpieza de procesos SIEMPRE ===
+                                :cleanup
+                                rem OJO: esto matará TODOS los python/java del agente
+                                rem En un agente dedicado para esto es aceptable.
+                                for /f "tokens=2" %%P in ('tasklist ^| find "python.exe"') do taskkill /F /PID %%P >NUL 2>&1
+                                for /f "tokens=2" %%P in ('tasklist ^| find "java.exe"')   do taskkill /F /PID %%P >NUL 2>&1
+
+                                exit /b %TEST_ERROR%
+
+                                :cleanup_and_fail
+                                goto cleanup
                             '''
                         }
+
+                        stash name: 'rest-test', includes: 'result-rest.xml', allowEmpty: true
                     }
                 }
             }
