@@ -33,10 +33,12 @@ pipeline {
                             bat '''
                                 set PYTHONPATH=%WORKSPACE%
                                 "C:\\Program Files\\Python312\\python.exe" -m pytest -o junit_suite_name=unit --junitxml=result-unit.xml test\\unit
-                            '''  
+                            '''
                             
                             // 2) Guardar el XML de resultados
                             stash name: 'unit-test', includes: 'result-unit.xml'
+                            
+                            // 6) Borrar workspace del agente UNIT
                             deleteDir()
                         }
                     }
@@ -101,12 +103,22 @@ pipeline {
         }
 
         stage('Results') {
-            steps {
-                unstash name:'unit-test'
-                unstash name:'rest-test'
+			steps {
+				// Siempre tenemos unit-test
+				unstash name:'unit-test'
+
+				// rest-test puede no existir si la stage Rest ha fallado
+				script {
+					try {
+						unstash name:'rest-test'
+					} catch (e) {
+						echo "No hay stash 'rest-test' (las pruebas REST no se ejecutaron o fallaron antes del stash)."
+					}
+				}
+
 				archiveArtifacts artifacts: 'result*.xml', fingerprint: true
-                junit 'result*.xml'
-            }
-        }
+				junit 'result*.xml'
+			}
+		}
     }
 }
