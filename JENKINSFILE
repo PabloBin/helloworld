@@ -7,7 +7,7 @@ pipeline {
         stage('Get Code') {
             steps {
                 // Limpiar workspace del agente Get Code
-                deleteDir()
+                //deleteDir()
                 
                 //Obtener código de repositorio
                 checkout scm   // respeta la rama configurada en el job
