@@ -87,13 +87,6 @@ pipeline {
                                 "C:\\Program Files\\Python312\\python.exe" -m pytest -o junit_suite_name=rest --junitxml=result-rest.xml test\\rest
                                 set TEST_ERROR=%ERRORLEVEL%
 
-                                rem === 4) Limpieza de procesos SIEMPRE ===
-                                :cleanup
-                                rem OJO: esto matará TODOS los python/java del agente
-                                rem En un agente dedicado para esto es aceptable.
-                                for /f "tokens=2" %%P in ('tasklist ^| find "python.exe"') do taskkill /F /PID %%P >NUL 2>&1
-                                for /f "tokens=2" %%P in ('tasklist ^| find "java.exe"')   do taskkill /F /PID %%P >NUL 2>&1
-
                                 exit /b %TEST_ERROR%
 
                                 :cleanup_and_fail
