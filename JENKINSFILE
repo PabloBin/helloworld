@@ -24,19 +24,19 @@ pipeline {
                 stage('Unit') {
                     agent {label 'Agente_Windows_2'}
                     steps {
-                        // 3) Limpiar workspace del agente UNIT
+                        // 1) Limpiar workspace del agente UNIT
                         deleteDir()
                             
                         unstash name:'source'
                         
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                             // 1) Ejecutar las pruebas UNIT
+                             // 2) Ejecutar las pruebas UNIT
                             bat '''
                                 set PYTHONPATH=%WORKSPACE%
                                 "C:\\Program Files\\Python312\\python.exe" -m pytest -o junit_suite_name=unit --junitxml=result-unit.xml test\\unit
                             '''
                             
-                            // 2) Guardar el XML de resultados
+                            // 3) Guardar el XML de resultados
                             stash name: 'unit-test', includes: 'result-unit.xml'
                         }
                     }
@@ -45,12 +45,12 @@ pipeline {
                     agent {label 'Agente_Windows_1'}
                     
                     steps {
-                        // Limpiar workspace del agente REST
+                        // 1) Limpiar workspace del agente REST
                         deleteDir()
                             
                         unstash name:'source'
                         
-                        // 1) Arrancar Flask y WireMock en background
+                        // 2) Arrancar Flask y WireMock en background
                         bat '''
                             set FLASK_APP=app\\api.py
                             start "FLASK_JENKINS" "C:\\Program Files\\Python312\\python.exe" -m flask run
@@ -58,7 +58,7 @@ pipeline {
                             start "WIREMOCK_JENKINS" java -jar "D:\\MIS DOCUMENTOS\\_CURSOS\\UNIR\\UTILS\\WIREMOCK\\wiremock-standalone-3.13.2.jar" --port 9090 --root-dir test\\wiremock
                         '''
                         
-                        // 2) Esperar hasta que ambos servicios respondan
+                        // 3) Esperar hasta que ambos servicios respondan
                             timeout(time: 1, unit: 'MINUTES') {   // máx 1 minuto
                             script {
                                 waitUntil {
@@ -78,18 +78,21 @@ pipeline {
                             }
                         }
                         
-                        // 3) Ejecutar las pruebas REST
+                        // 4) Ejecutar las pruebas REST
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                             bat '''
                                 set PYTHONPATH=%WORKSPACE%
                                 "C:\\Program Files\\Python312\\python.exe" -m pytest -o junit_suite_name=rest --junitxml=result-rest.xml test\\rest
                             '''
+                            
+                            // 2) Intentar guardar el resultado REST, aunque esté vacío (allowEmpty evita que falle si no hay result-rest.xml)
+                            stash name: 'rest-test', includes: 'result-rest.xml', allowEmpty: true
                         }
                     }
                     
                     post {
                         always {
-                            // Cerrar siempre los servicios (Flask y WireMock)
+                            // 1) Cerrar siempre los servicios (Flask y WireMock)
                             bat '''
                                 rem Matar ventana/procesos de Flask
                                 taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS" /T >NUL 2>&1 || echo Flask ya parado
@@ -97,10 +100,6 @@ pipeline {
                                 rem Matar ventana/procesos de WireMock
                                 taskkill /F /FI "WINDOWTITLE eq WIREMOCK_JENKINS" /T >NUL 2>&1 || echo WireMock ya parado
                             '''
-                            
-                            // Intentar guardar el resultado REST, aunque esté vacío
-                            // (allowEmpty evita que falle si no hay result-rest.xml)
-                            stash name: 'rest-test', includes: 'result-rest.xml', allowEmpty: true
                         }
                     }
                 }
@@ -109,10 +108,13 @@ pipeline {
         
         stage('Results') {
             steps {
-                // obtenemos unit-test
+                // 1) Limpiar workspace del agente RESULTS
+                deleteDir()
+                
+                // 2) obtenemos unit-test
                 unstash name:'unit-test'
                 
-                // rest-test puede no existir si la stage Rest ha fallado
+                // 3) rest-test puede no existir si la stage Rest ha fallado
                 script {
                     try {
                         unstash name:'rest-test'
@@ -121,6 +123,7 @@ pipeline {
                     }
                 }
                 
+                // 4) 
                 archiveArtifacts artifacts: 'result*.xml', fingerprint: true
                 junit 'result*.xml'
             }
