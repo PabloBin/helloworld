@@ -46,7 +46,7 @@ pipeline {
                     
                     steps {
                         // 1) Limpiar workspace del agente REST
-                        deleteDir()
+                        //deleteDir()
                             
                         unstash name:'source'
                         
@@ -109,7 +109,7 @@ pipeline {
         stage('Results') {
             steps {
                 // 1) Limpiar workspace del agente RESULTS
-                deleteDir()
+                //deleteDir()
                 
                 // 2) obtenemos unit-test
                 unstash name:'unit-test'
