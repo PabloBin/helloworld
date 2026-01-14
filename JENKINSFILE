@@ -140,15 +140,11 @@ pipeline {
         
         stage('Security'){
             steps{
-                // 1) Limpiar workspace del agente SECURITY
-                deleteDir()
                 
-                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                    bat'''
-                        bandit --exit-zero -r . -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
-                    '''
-                }
-                
+                bat'''
+                    bandit --exit-zero -r . -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
+                '''
+
                 recordIssues tools: [pyLint(name: 'Bandit', pattern: 'bandit.out')], qualityGates: [[threshold: 2, type: 'TOTAL', unstable: true], [threshold: 4, type: 'TOTAL', unstable: false]]
             }
         }
