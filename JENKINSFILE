@@ -62,12 +62,14 @@ pipeline {
                         unstash name:'source'
                         
                         // 2) Arrancar Flask y WireMock en background
-                        bat '''
-                            set FLASK_APP=app\\api.py
-                            start "FLASK_JENKINS" /MIN "C:\\Program Files\\Python312\\python.exe" -m flask run
-                            
-                            start "WIREMOCK_JENKINS" /MIN java -jar "D:\\MIS DOCUMENTOS\\_CURSOS\\UNIR\\UTILS\\WIREMOCK\\wiremock-standalone-3.13.2.jar" --port 9090 --root-dir test\\wiremock
-                        '''
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            bat '''
+                                set FLASK_APP=app\\api.py
+                                start "FLASK_JENKINS" /MIN "C:\\Program Files\\Python312\\python.exe" -m flask run
+                                
+                                start "WIREMOCK_JENKINS" /MIN java -jar "D:\\MIS DOCUMENTOS\\_CURSOS\\UNIR\\UTILS\\WIREMOCK\\wiremock-standalone-3.13.2.jar" --port 9090 --root-dir test\\wiremock
+                            '''
+                        }
                         
                         // 3) Esperar hasta que ambos servicios respondan
                             timeout(time: 1, unit: 'MINUTES') {   // máx 1 minuto
@@ -119,7 +121,7 @@ pipeline {
         
         stage('Cobertura'){
             steps{
-                // 1) Limpiar workspace del agente REST
+                // 1) Limpiar workspace del agente COBERTURA
                 deleteDir()
                             
                 unstash name:'source'
@@ -138,18 +140,55 @@ pipeline {
         
         stage('Security'){
             steps{
-                bat'''
-                    bandit --exit-zero -r . -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
-                '''
+                // 1) Limpiar workspace del agente SECURITY
+                deleteDir()
+                
+                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                    bat'''
+                        bandit --exit-zero -r . -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
+                    '''
+                }
+                
                 recordIssues tools: [pyLint(name: 'Bandit', pattern: 'bandit.out')], qualityGates: [[threshold: 2, type: 'TOTAL', unstable: true], [threshold: 4, type: 'TOTAL', unstable: false]]
             }
         }
         
         stage('Performance'){
             steps{
-                bat'''
-                    "D:\\MIS DOCUMENTOS\\_CURSOS\\UNIR\\UTILS\\JMETER\\apache-jmeter-5.6.3\\bin\\jmeter" -n -t test\\jmeter\\flask.jmx -l flask.jtl
-                '''
+                // 1) Limpiar workspace del agente PERFORMANCE
+                deleteDir()
+                
+                // 2) Arrancar Flask y WireMock en background
+                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                    bat '''
+                        set FLASK_APP=app\\api.py
+                        start "FLASK_JENKINS" /MIN "C:\\Program Files\\Python312\\python.exe" -m flask run
+                    '''
+                }
+                
+                // 3) Esperar hasta el servicio de Flask respondan
+                    timeout(time: 1, unit: 'MINUTES') {   // máx 1 minuto
+                    script {
+                        waitUntil {
+                            def status = bat(
+                                returnStatus: true,
+                                script: '''
+                                    rem Comprobar Flask (puerto 5000)
+                                    curl -s http://localhost:5000/ >NUL 2>&1 || exit /b 1
+                                '''
+                            )
+                            // status == 0 => ha respondido, salimos del waitUntil
+                            return (status == 0)
+                        }
+                    }
+                }
+                
+                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                    bat'''
+                        "D:\\MIS DOCUMENTOS\\_CURSOS\\UNIR\\UTILS\\JMETER\\apache-jmeter-5.6.3\\bin\\jmeter" -n -t test\\jmeter\\flask.jmx -l flask.jtl
+                    '''
+                }
+                
                 perfReport sourceDataFiles: 'flask.jtl'
             }
         }
