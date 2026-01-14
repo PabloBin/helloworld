@@ -167,7 +167,7 @@ pipeline {
                 }
                 
                 // 3) Esperar hasta el servicio de Flask respondan
-                    timeout(time: 1, unit: 'MINUTES') {   // máx 1 minuto
+                timeout(time: 1, unit: 'MINUTES') {   // máx 1 minuto
                     script {
                         waitUntil {
                             def status = bat(
@@ -185,7 +185,7 @@ pipeline {
                 
                 catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                     bat'''
-                        "D:\\MIS DOCUMENTOS\\_CURSOS\\UNIR\\UTILS\\JMETER\\apache-jmeter-5.6.3\\bin\\jmeter" -n -t test\\jmeter\\flask.jmx -l flask.jtl
+                        "D:\\MIS DOCUMENTOS\\_CURSOS\\UNIR\\UTILS\\JMETER\\apache-jmeter-5.5\\bin\\jmeter" -n -t test\\jmeter\\flask.jmx -l flask.jtl
                     '''
                 }
                 
