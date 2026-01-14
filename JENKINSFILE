@@ -136,6 +136,15 @@ pipeline {
             }
         }
         
+        stage('Security'){
+            steps{
+                bat'''
+                    bandit --exit-zero -r . -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
+                '''
+                recordIssues tools: [pyLint(name: 'Bandit', pattern: 'bandit.out')], qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true], [threshold: 2, type: 'TOTAL', unstable: false]]
+            }
+        }
+        
         stage('Results') {
             steps {
                 // 1) Limpiar workspace del agente RESULTS
