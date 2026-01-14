@@ -191,6 +191,16 @@ pipeline {
                 
                 perfReport sourceDataFiles: 'flask.jtl'
             }
+            
+            post {
+                always {
+                    // 1) Cerrar siempre el servicio (Flask)
+                    bat '''
+                        rem Matar ventana/procesos de Flask
+                        taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS" /T >NUL 2>&1 || echo Flask ya parado
+                    '''
+                }
+            }
         }
         
         stage('Results') {
