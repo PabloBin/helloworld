@@ -154,9 +154,12 @@ pipeline {
         }
         
         stage('Performance'){
+            agent { label 'Agente_Windows_1' }
             steps{
                 // 1) Limpiar workspace del agente PERFORMANCE
                 deleteDir()
+                
+                unstash name:'source'
                 
                 // 2) Arrancar Flask y WireMock en background
                 catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
