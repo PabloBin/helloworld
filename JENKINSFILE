@@ -72,7 +72,7 @@ pipeline {
                         }
                         
                         // 3) Esperar hasta que ambos servicios respondan
-                            timeout(time: 1, unit: 'MINUTES') {   // máx 1 minuto
+                        timeout(time: 1, unit: 'MINUTES') {   // máx 1 minuto
                             script {
                                 waitUntil {
                                     def status = bat(
@@ -199,29 +199,6 @@ pipeline {
                         taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS" /T >NUL 2>&1 || echo Flask ya parado
                     '''
                 }
-            }
-        }
-        
-        stage('Results') {
-            steps {
-                // 1) Limpiar workspace del agente RESULTS
-                deleteDir()
-                
-                // 2) obtenemos unit-test
-                unstash name:'unit-test'
-                
-                // 3) rest-test puede no existir si la stage Rest ha fallado
-                script {
-                    try {
-                        unstash name:'rest-test'
-                    } catch (e) {
-                        echo "No hay stash 'rest-test' (las pruebas REST no se ejecutaron o fallaron antes del stash)."
-                    }
-                }
-                
-                // 4) 
-                archiveArtifacts artifacts: 'result*.xml', fingerprint: true
-                junit 'result*.xml'
             }
         }
     }
