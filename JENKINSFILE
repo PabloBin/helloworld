@@ -25,7 +25,7 @@ pipeline {
         }
 
         // ------------------------------------------------------------
-        // 4) STATIC - FLAKE8
+        // 2) STATIC - FLAKE8
         // ------------------------------------------------------------
         stage('Static - Flake8') {
             steps {
@@ -39,7 +39,7 @@ pipeline {
         }
 
         // ------------------------------------------------------------
-        // 5) SECURITY - BANDIT
+        // 3) SECURITY - BANDIT
         // ------------------------------------------------------------
         stage('Security - Bandit') {
             steps {
@@ -53,7 +53,7 @@ pipeline {
         }
 
         // ------------------------------------------------------------
-        // 6) UNIT TESTS
+        // 4) UNIT TESTS
         // ------------------------------------------------------------
         
         stage('Unit Tests') {
@@ -70,7 +70,7 @@ pipeline {
         }
 
         // ------------------------------------------------------------
-        // 7) REST TEST
+        // 5) REST TEST
         // ------------------------------------------------------------
         stage('Rest Test') {
             steps {
@@ -110,20 +110,25 @@ pipeline {
                     junit "result-rest.xml" 
                }
                
-               catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                    bat '''
-                        rem Matar ventana/procesos de Flask
-                        taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS" /T >NUL 2>&1 || echo Flask ya parado
-                        
-                        rem Matar ventana/procesos de WireMock
-                        taskkill /F /FI "WINDOWTITLE eq WIREMOCK_JENKINS" /T >NUL 2>&1 || echo WireMock ya parado
-                    '''
-               }
+               
+            }
+            post {
+                always {
+                    catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                        bat '''
+                            rem Matar ventana/procesos de Flask
+                            taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS" /T >NUL 2>&1 || echo Flask ya parado
+                            
+                            rem Matar ventana/procesos de WireMock
+                            taskkill /F /FI "WINDOWTITLE eq WIREMOCK_JENKINS" /T >NUL 2>&1 || echo WireMock ya parado
+                        '''
+                   }
+                }
             }
         }
 
         // ------------------------------------------------------------
-        // 11) COVERAGE
+        // 6) COVERAGE
         // ------------------------------------------------------------
         stage('Coverage') {
             steps {
@@ -150,7 +155,7 @@ pipeline {
         }
 
         // ------------------------------------------------------------
-        // 12) PERFORMANCE
+        // 7) PERFORMANCE
         // ------------------------------------------------------------
         stage('Performance') {
             steps {
@@ -187,10 +192,15 @@ pipeline {
                     perfReport sourceDataFiles: "flask.jtl"
                 }
 
-                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                    bat '''
-                        taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS_PERF" /T >NUL 2>&1 || echo Flask ya parado
-                    '''
+                
+            }
+            post {
+                always {
+                    catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                        bat '''
+                            taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS_PERF" /T >NUL 2>&1 || echo Flask ya parado
+                        '''
+                    }
                 }
             }
         }
