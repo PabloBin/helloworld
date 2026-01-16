@@ -19,7 +19,7 @@ pipeline {
     stages {
 
         // ============================================================
-        // 1) CHECKOUT EN PRINCIPAL (1 sola vez) + stash del repo
+        // 1) GET CODE (1 sola vez) + stash del repo
         // ============================================================
         stage('Checkout') {
             agent { label 'Agente_Principal' }
@@ -47,14 +47,14 @@ pipeline {
         }
 
         // ============================================================
-        // 2) PRUEBAS EN PARALELO (lo máximo posible)
+        // 2) PRUEBAS EN PARALELO
         // ============================================================
         stage('Parallel Tests') {
             parallel {
 
-                // ----------------------------
+                // --------------------------------------------------------
                 // 2.1) STATIC - FLAKE8 (Agente_Windows_1)
-                // ----------------------------
+                // --------------------------------------------------------
                 stage('Static - Flake8') {
                     agent { label 'Agente_Windows_1' }
                     steps {
@@ -88,9 +88,9 @@ pipeline {
                     }
                 }
 
-                // ----------------------------
+                // --------------------------------------------------------
                 // 2.2) SECURITY - BANDIT (Agente_Windows_2)
-                // ----------------------------
+                // --------------------------------------------------------
                 stage('Security - Bandit') {
                     agent { label 'Agente_Windows_2' }
                     steps {
@@ -122,9 +122,9 @@ pipeline {
                     }
                 }
 
-                // ----------------------------
+                // ------------------------------------------------------------------------------------
                 // 2.3) UNIT TESTS (Agente_Windows_1) Una sola vez + genera coverage.xml
-                // ----------------------------
+                // ------------------------------------------------------------------------------------
                 stage('Unit Tests (Con .coverage)') {
                     agent { label 'Agente_Windows_1' }
                     steps {
@@ -164,9 +164,9 @@ pipeline {
                     }
                 }
 
-                // ----------------------------
+                // ------------------------------------------------------------------------------------
                 // 2.4) REST TEST (Agente_Windows_2) Servicios Flask y WireMock + pytest rest
-                // ----------------------------
+                // ------------------------------------------------------------------------------------
                 stage('Rest Test') {
                     agent { label 'Agente_Windows_2' }
                     steps {
@@ -195,10 +195,13 @@ pipeline {
                         timeout(time: 1, unit: 'MINUTES') {
                             script {
                                 waitUntil {
-                                    def status = bat(returnStatus: true, script: '''
-                                        curl -s http://localhost:5000/ >NUL 2>&1 || exit /b 1
-                                        curl -s http://localhost:9090/__admin/ >NUL 2>&1 || exit /b 1
-                                    ''')
+                                    def status = bat(
+                                        returnStatus: true, 
+                                        script: '''
+                                            curl -s http://localhost:5000/ >NUL 2>&1 || exit /b 1
+                                            curl -s http://localhost:9090/__admin/ >NUL 2>&1 || exit /b 1
+                                        '''
+                                    )
                                     return (status == 0)
                                 }
                             }
@@ -261,13 +264,15 @@ pipeline {
                 }
             }
             post {
-                always { cleanWs() }
+                always { 
+                    cleanWs() 
+                }
             }
         }
 
-        // ============================================================
+        // ============================================================================
         // 4) PERFORMANCE (secuencial para evitar conflicto de puerto 5000 de Flack)
-        // ============================================================
+        // ============================================================================
         stage('Performance') {
             agent { label 'Agente_Windows_1' }
             steps {
@@ -294,9 +299,12 @@ pipeline {
                 timeout(time: 1, unit: 'MINUTES') {
                     script {
                         waitUntil {
-                            def status = bat(returnStatus: true, script: '''
-                                curl -s http://localhost:5000/ >NUL 2>&1 || exit /b 1
-                            ''')
+                            def status = bat(
+                                returnStatus: true, 
+                                script: '''
+                                    curl -s http://localhost:5000/ >NUL 2>&1 || exit /b 1
+                                '''
+                            )
                             return (status == 0)
                         }
                     }

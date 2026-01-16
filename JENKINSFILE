@@ -19,6 +19,7 @@ pipeline {
         // ------------------------------------------------------------
         stage('Get Code') {
             steps {
+                cleanWs()
                 deleteDir()
                 git 'https://github.com/PabloBin/helloworld.git'
             }
@@ -29,12 +30,16 @@ pipeline {
         // ------------------------------------------------------------
         stage('Static - Flake8') {
             steps {
-                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                    bat """
-                        flake8 --exit-zero --format=pylint app 1> flake8.out
-                    """
-                    recordIssues tools: [flake8(name: 'Flake8', pattern: 'flake8.out')], qualityGates: [[threshold: 8, type: 'TOTAL', unstable: true], [threshold: 10, type: 'TOTAL', unstable: false]]
-                }
+                // No hace falta catchError aquí: flake8 va con --exit-zero
+                bat """
+                    flake8 --exit-zero --format=pylint app 1> flake8.out
+                """
+                
+                // Esto define el estado del stage (OK / UNSTABLE / FAIL)
+                recordIssues tools: [flake8(name: 'Flake8', pattern: 'flake8.out')],
+                    qualityGates: [
+                        [threshold: 8, type: 'TOTAL', unstable: true],
+                        [threshold: 10, type: 'TOTAL', unstable: false]
             }
         }
 
@@ -43,12 +48,17 @@ pipeline {
         // ------------------------------------------------------------
         stage('Security - Bandit') {
             steps {
-                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                    bat """
-                        bandit --exit-zero -r . -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
-                    """
-                    recordIssues tools: [pyLint(name: 'Bandit', pattern: 'bandit.out')], qualityGates: [[threshold: 2, type: 'TOTAL', unstable: true], [threshold: 4, type: 'TOTAL', unstable: false]]
-                }
+                // No hace falta catchError aquí: bandit va con --exit-zero
+                bat """
+                    bandit --exit-zero -r . -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
+                """
+                
+                // Esto define el estado del stage (OK / UNSTABLE / FAIL)
+                recordIssues tools: [pyLint(name: 'Bandit', pattern: 'bandit.out')],
+                    qualityGates: [
+                        [threshold: 2, type: 'TOTAL', unstable: true],
+                        [threshold: 4, type: 'TOTAL', unstable: false]
+                    ]
             }
         }
 
@@ -64,8 +74,9 @@ pipeline {
                         if exist .coverage del /F /Q .coverage
                         "${env.PYTHON}" -m coverage run --branch --source=app --omit=app\\__init__.py,app\\api.py -m pytest -o junit_suite_name=unit --junitxml=result-unit.xml test\\unit
                     """
-                    junit "result-unit.xml"
                 }
+                
+                junit "result-unit.xml"
             }
         }
 
@@ -107,22 +118,16 @@ pipeline {
                         set PYTHONPATH=%WORKSPACE%
                         "${env.PYTHON}" -m pytest -o junit_suite_name=rest --junitxml=result-rest.xml test\\rest
                     """
-                    junit "result-rest.xml" 
                }
                
-               
+               junit "result-rest.xml" 
             }
             post {
                 always {
-                    catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                        bat '''
-                            rem Matar ventana/procesos de Flask
-                            taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS" /T >NUL 2>&1 || echo Flask ya parado
-                            
-                            rem Matar ventana/procesos de WireMock
-                            taskkill /F /FI "WINDOWTITLE eq WIREMOCK_JENKINS" /T >NUL 2>&1 || echo WireMock ya parado
-                        '''
-                   }
+                    bat '''
+                        taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS" /T >NUL 2>&1 || echo Flask ya parado
+                        taskkill /F /FI "WINDOWTITLE eq WIREMOCK_JENKINS" /T >NUL 2>&1 || echo WireMock ya parado
+                    '''
                 }
             }
         }
@@ -196,11 +201,11 @@ pipeline {
             }
             post {
                 always {
-                    catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                        bat '''
-                            taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS_PERF" /T >NUL 2>&1 || echo Flask ya parado
-                        '''
-                    }
+                    
+                    bat '''
+                        taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS_PERF" /T >NUL 2>&1 || echo Flask ya parado
+                    '''
+                    cleanWs()
                 }
             }
         }
