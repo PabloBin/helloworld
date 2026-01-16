@@ -1,0 +1,324 @@
+pipeline {
+    agent none
+
+    options {
+        skipDefaultCheckout()
+    }
+
+    environment {
+        PYTHON = 'C:\\Program Files\\Python312\\python.exe'
+        JMETER = 'D:\\MIS DOCUMENTOS\\_CURSOS\\UNIR\\UTILS\\JMETER\\apache-jmeter-5.5\\bin\\jmeter.bat'
+        WIREMOCK = 'D:\\MIS DOCUMENTOS\\_CURSOS\\UNIR\\UTILS\\WIREMOCK\\wiremock-standalone-3.13.2.jar'
+
+        UNIT_XML = 'result-unit.xml'
+        REST_XML = 'result-rest.xml'
+        COV_XML  = 'coverage.xml'
+        JMETER_JTL = 'flask.jtl'
+    }
+
+    stages {
+
+        // ============================================================
+        // 1) CHECKOUT EN PRINCIPAL (1 sola vez) + stash del repo
+        // ============================================================
+        stage('Checkout') {
+            agent { label 'Agente_Principal' }
+            steps {
+                cleanWs()
+
+                bat '''
+                    whoami
+                    hostname
+                    echo WORKSPACE=%WORKSPACE%
+                    echo NODE_NAME=%NODE_NAME%
+                    echo EXECUTOR_NUMBER=%EXECUTOR_NUMBER%
+                '''
+
+                git 'https://github.com/PabloBin/helloworld.git'
+
+                // Compartimos el repo con los demás agentes
+                stash name: 'src', includes: '**/*'
+            }
+            post {
+                always {
+                    cleanWs()
+                }
+            }
+        }
+
+        // ============================================================
+        // 2) PRUEBAS EN PARALELO (lo máximo posible)
+        // ============================================================
+        stage('Parallel Tests') {
+            parallel {
+
+                // ----------------------------
+                // 2.1) STATIC - FLAKE8 (Agente_Windows_1)
+                // ----------------------------
+                stage('Static - Flake8') {
+                    agent { label 'Agente_Windows_1' }
+                    steps {
+                        cleanWs()
+                        unstash 'src'
+
+                        bat '''
+                            whoami
+                            hostname
+                            echo WORKSPACE=%WORKSPACE%
+                            echo NODE_NAME=%NODE_NAME%
+                            echo EXECUTOR_NUMBER=%EXECUTOR_NUMBER%
+                        '''
+
+                        // No hace falta catchError aquí: flake8 va con --exit-zero
+                        bat '''
+                            flake8 --exit-zero --format=pylint app 1> flake8.out
+                        '''
+
+                        // Esto define el estado del stage (OK / UNSTABLE / FAIL)
+                        recordIssues tools: [flake8(name: 'Flake8', pattern: 'flake8.out')],
+                            qualityGates: [
+                                [threshold: 8, type: 'TOTAL', unstable: true],
+                                [threshold: 10, type: 'TOTAL', unstable: false]
+                            ]
+                    }
+                    post {
+                        always { 
+                            cleanWs() 
+                        }
+                    }
+                }
+
+                // ----------------------------
+                // 2.2) SECURITY - BANDIT (Agente_Windows_2)
+                // ----------------------------
+                stage('Security - Bandit') {
+                    agent { label 'Agente_Windows_2' }
+                    steps {
+                        cleanWs()
+                        unstash 'src'
+
+                        bat '''
+                            whoami
+                            hostname
+                            echo WORKSPACE=%WORKSPACE%
+                            echo NODE_NAME=%NODE_NAME%
+                            echo EXECUTOR_NUMBER=%EXECUTOR_NUMBER%
+                        '''
+
+                        // No hace falta catchError aquí: bandit va con --exit-zero
+                        bat """
+                            bandit --exit-zero -r . -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
+                        """
+                        
+                        // Esto define el estado del stage (OK / UNSTABLE / FAIL)
+                        recordIssues tools: [pyLint(name: 'Bandit', pattern: 'bandit.out')],
+                            qualityGates: [
+                                [threshold: 2, type: 'TOTAL', unstable: true],
+                                [threshold: 4, type: 'TOTAL', unstable: false]
+                            ]
+                    }
+                    post {
+                        always { cleanWs() }
+                    }
+                }
+
+                // ----------------------------
+                // 2.3) UNIT TESTS (Agente_Windows_1) Una sola vez + genera coverage.xml
+                // ----------------------------
+                stage('Unit Tests (Con .coverage)') {
+                    agent { label 'Agente_Windows_1' }
+                    steps {
+                        cleanWs()
+                        unstash 'src'
+
+                        bat '''
+                            whoami
+                            hostname
+                            echo WORKSPACE=%WORKSPACE%
+                            echo NODE_NAME=%NODE_NAME%
+                            echo EXECUTOR_NUMBER=%EXECUTOR_NUMBER%
+                        '''
+
+                        // Si fallan tests -> stage rojo, pero pipeline continúa
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            bat """
+                                set PYTHONPATH=%WORKSPACE%
+                                if exist .coverage del /F /Q .coverage
+
+                                "${env.PYTHON}" -m coverage run --branch --source=app --omit=app\\__init__.py,app\\api.py ^
+                                    -m pytest -o junit_suite_name=unit --junitxml=${env.UNIT_XML} test\\unit
+
+                                "${env.PYTHON}" -m coverage xml -o ${env.COV_XML}
+                            """
+                        }
+
+                        junit "${env.UNIT_XML}"
+
+                        // Compartimos coverage para la etapa "Coverage Gates"
+                        stash name: 'coverage-files', includes: '.coverage,coverage.xml', allowEmpty: true
+                    }
+                    post {
+                        always { 
+                            cleanWs() 
+                        }
+                    }
+                }
+
+                // ----------------------------
+                // 2.4) REST TEST (Agente_Windows_2) Servicios Flask y WireMock + pytest rest
+                // ----------------------------
+                stage('Rest Test') {
+                    agent { label 'Agente_Windows_2' }
+                    steps {
+                        cleanWs()
+                        unstash 'src'
+
+                        bat '''
+                            whoami
+                            hostname
+                            echo WORKSPACE=%WORKSPACE%
+                            echo NODE_NAME=%NODE_NAME%
+                            echo EXECUTOR_NUMBER=%EXECUTOR_NUMBER%
+                        '''
+
+                        // Levantar Flask + WireMock
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            bat """
+                                set FLASK_APP=app\\api.py
+                                start "FLASK_JENKINS" /MIN "${env.PYTHON}" -m flask run
+
+                                start "WIREMOCK_JENKINS" /MIN java -jar "${env.WIREMOCK}" --port 9090 --root-dir test\\wiremock
+                            """
+                        }
+
+                        // Esperar a que ambos estén listos
+                        timeout(time: 1, unit: 'MINUTES') {
+                            script {
+                                waitUntil {
+                                    def status = bat(returnStatus: true, script: '''
+                                        curl -s http://localhost:5000/ >NUL 2>&1 || exit /b 1
+                                        curl -s http://localhost:9090/__admin/ >NUL 2>&1 || exit /b 1
+                                    ''')
+                                    return (status == 0)
+                                }
+                            }
+                        }
+
+                        // Ejecutar tests REST
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            bat """
+                                set PYTHONPATH=%WORKSPACE%
+                                "${env.PYTHON}" -m pytest -o junit_suite_name=rest --junitxml=${env.REST_XML} test\\rest
+                            """
+                        }
+
+                        junit "${env.REST_XML}"
+                    }
+                    post {
+                        always {
+                            bat '''
+                                taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS" /T >NUL 2>&1 || echo Flask ya parado
+                                taskkill /F /FI "WINDOWTITLE eq WIREMOCK_JENKINS" /T >NUL 2>&1 || echo WireMock ya parado
+                            '''
+                            cleanWs()
+                        }
+                    }
+                }
+            }
+        }
+
+        // ============================================================
+        // 3) COVERAGE GATES (secuencial, depende de Unit Tests)
+        // ============================================================
+        stage('Coverage Gates') {
+            agent { label 'Agente_Windows_1' }
+            steps {
+                cleanWs()
+                unstash 'coverage-files'
+
+                bat '''
+                    whoami
+                    hostname
+                    echo WORKSPACE=%WORKSPACE%
+                    echo NODE_NAME=%NODE_NAME%
+                    echo EXECUTOR_NUMBER=%EXECUTOR_NUMBER%
+                '''
+
+                // Debe continuar siempre -> catchError
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    recordCoverage(
+                        tools: [[parser: 'COBERTURA', pattern: 'coverage.xml']],
+                        qualityGates: [
+                            // LINE: <85 rojo, 85-95 unstable, >95 verde
+                            [metric: 'LINE', threshold: 85, criticality: 'FAILURE'],
+                            [metric: 'LINE', threshold: 95, criticality: 'UNSTABLE'],
+
+                            // BRANCH: <80 rojo, 80-90 unstable, >90 verde
+                            [metric: 'BRANCH', threshold: 80, criticality: 'FAILURE'],
+                            [metric: 'BRANCH', threshold: 90, criticality: 'UNSTABLE']
+                        ]
+                    )
+                }
+            }
+            post {
+                always { cleanWs() }
+            }
+        }
+
+        // ============================================================
+        // 4) PERFORMANCE (secuencial para evitar conflicto de puerto 5000 de Flack)
+        // ============================================================
+        stage('Performance') {
+            agent { label 'Agente_Windows_1' }
+            steps {
+                cleanWs()
+                unstash 'src'
+
+                bat '''
+                    whoami
+                    hostname
+                    echo WORKSPACE=%WORKSPACE%
+                    echo NODE_NAME=%NODE_NAME%
+                    echo EXECUTOR_NUMBER=%EXECUTOR_NUMBER%
+                '''
+
+                // Levantar Flask
+                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                    bat """
+                        set FLASK_APP=app\\api.py
+                        start "FLASK_JENKINS_PERF" /MIN "${env.PYTHON}" -m flask run
+                    """
+                }
+
+                // Esperar a que esté listo
+                timeout(time: 1, unit: 'MINUTES') {
+                    script {
+                        waitUntil {
+                            def status = bat(returnStatus: true, script: '''
+                                curl -s http://localhost:5000/ >NUL 2>&1 || exit /b 1
+                            ''')
+                            return (status == 0)
+                        }
+                    }
+                }
+
+                // JMeter + reporte Jenkins
+                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                    bat """
+                        if exist "${env.JMETER_JTL}" del /F /Q "${env.JMETER_JTL}"
+                        "${env.JMETER}" -n -t test\\jmeter\\flask.jmx -l "${env.JMETER_JTL}"
+                    """
+                    perfReport sourceDataFiles: "${env.JMETER_JTL}"
+                }
+            }
+            post {
+                always {
+                    bat '''
+                        taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS_PERF" /T >NUL 2>&1 || echo Flask ya parado
+                    '''
+                    cleanWs()
+                }
+            }
+        }
+    }
+}
