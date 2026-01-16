@@ -20,7 +20,6 @@ pipeline {
         stage('Get Code') {
             steps {
                 cleanWs()
-                deleteDir()
                 git 'https://github.com/PabloBin/helloworld.git'
             }
         }
@@ -40,6 +39,7 @@ pipeline {
                     qualityGates: [
                         [threshold: 8, type: 'TOTAL', unstable: true],
                         [threshold: 10, type: 'TOTAL', unstable: false]
+                    ]
             }
         }
 
