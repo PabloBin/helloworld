@@ -49,7 +49,7 @@ pipeline {
         // ============================================================
         // 2) PRUEBAS EN PARALELO
         // ============================================================
-        stage('Parallel Tests') {
+        stage('Tests (Parallel)') {
             parallel {
 
                 // --------------------------------------------------------
@@ -92,7 +92,7 @@ pipeline {
                 // 2.2) SECURITY - BANDIT (Agente_Windows_2)
                 // --------------------------------------------------------
                 stage('Security - Bandit') {
-                    agent { label 'Agente_Windows_2' }
+                    agent { label 'Agente_Windows_1' }
                     steps {
                         cleanWs()
                         unstash 'src'
@@ -126,7 +126,7 @@ pipeline {
                 // 2.3) UNIT TESTS (Agente_Windows_1) Una sola vez + genera coverage.xml
                 // ------------------------------------------------------------------------------------
                 stage('Unit Tests (Con .coverage)') {
-                    agent { label 'Agente_Windows_1' }
+                    agent { label 'Agente_Windows_2' }
                     steps {
                         cleanWs()
                         unstash 'src'
@@ -229,102 +229,105 @@ pipeline {
                 }
             }
         }
+        stage('Post Tests (Parallel)') {
+            parallel {
+                // ============================================================
+                // 3) COVERAGE GATES (secuencial, depende de Unit Tests)
+                // ============================================================
+                stage('Coverage Gates') {
+                    agent { label 'Agente_Windows_1' }
+                    steps {
+                        cleanWs()
+                        unstash 'coverage-files'
 
-        // ============================================================
-        // 3) COVERAGE GATES (secuencial, depende de Unit Tests)
-        // ============================================================
-        stage('Coverage Gates') {
-            agent { label 'Agente_Windows_1' }
-            steps {
-                cleanWs()
-                unstash 'coverage-files'
+                        bat '''
+                            whoami
+                            hostname
+                            echo WORKSPACE=%WORKSPACE%
+                            echo NODE_NAME=%NODE_NAME%
+                            echo EXECUTOR_NUMBER=%EXECUTOR_NUMBER%
+                        '''
 
-                bat '''
-                    whoami
-                    hostname
-                    echo WORKSPACE=%WORKSPACE%
-                    echo NODE_NAME=%NODE_NAME%
-                    echo EXECUTOR_NUMBER=%EXECUTOR_NUMBER%
-                '''
+                        // Debe continuar siempre -> catchError
+                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                            recordCoverage(
+                                tools: [[parser: 'COBERTURA', pattern: 'coverage.xml']],
+                                qualityGates: [
+                                    // LINE: <85 rojo, 85-95 unstable, >95 verde
+                                    [metric: 'LINE', threshold: 85, criticality: 'FAILURE'],
+                                    [metric: 'LINE', threshold: 95, criticality: 'UNSTABLE'],
 
-                // Debe continuar siempre -> catchError
-                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                    recordCoverage(
-                        tools: [[parser: 'COBERTURA', pattern: 'coverage.xml']],
-                        qualityGates: [
-                            // LINE: <85 rojo, 85-95 unstable, >95 verde
-                            [metric: 'LINE', threshold: 85, criticality: 'FAILURE'],
-                            [metric: 'LINE', threshold: 95, criticality: 'UNSTABLE'],
-
-                            // BRANCH: <80 rojo, 80-90 unstable, >90 verde
-                            [metric: 'BRANCH', threshold: 80, criticality: 'FAILURE'],
-                            [metric: 'BRANCH', threshold: 90, criticality: 'UNSTABLE']
-                        ]
-                    )
-                }
-            }
-            post {
-                always { 
-                    cleanWs() 
-                }
-            }
-        }
-
-        // ============================================================================
-        // 4) PERFORMANCE (secuencial para evitar conflicto de puerto 5000 de Flack)
-        // ============================================================================
-        stage('Performance') {
-            agent { label 'Agente_Windows_1' }
-            steps {
-                cleanWs()
-                unstash 'src'
-
-                bat '''
-                    whoami
-                    hostname
-                    echo WORKSPACE=%WORKSPACE%
-                    echo NODE_NAME=%NODE_NAME%
-                    echo EXECUTOR_NUMBER=%EXECUTOR_NUMBER%
-                '''
-
-                // Levantar Flask
-                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                    bat """
-                        set FLASK_APP=app\\api.py
-                        start "FLASK_JENKINS_PERF" /MIN "${env.PYTHON}" -m flask run
-                    """
-                }
-
-                // Esperar a que esté listo
-                timeout(time: 1, unit: 'MINUTES') {
-                    script {
-                        waitUntil {
-                            def status = bat(
-                                returnStatus: true, 
-                                script: '''
-                                    curl -s http://localhost:5000/ >NUL 2>&1 || exit /b 1
-                                '''
+                                    // BRANCH: <80 rojo, 80-90 unstable, >90 verde
+                                    [metric: 'BRANCH', threshold: 80, criticality: 'FAILURE'],
+                                    [metric: 'BRANCH', threshold: 90, criticality: 'UNSTABLE']
+                                ]
                             )
-                            return (status == 0)
+                        }
+                    }
+                    post {
+                        always { 
+                            cleanWs() 
                         }
                     }
                 }
 
-                // JMeter + reporte Jenkins
-                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                    bat """
-                        if exist "${env.JMETER_JTL}" del /F /Q "${env.JMETER_JTL}"
-                        "${env.JMETER}" -n -t test\\jmeter\\flask.jmx -l "${env.JMETER_JTL}"
-                    """
-                    perfReport sourceDataFiles: "${env.JMETER_JTL}"
-                }
-            }
-            post {
-                always {
-                    bat '''
-                        taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS_PERF" /T >NUL 2>&1 || echo Flask ya parado
-                    '''
-                    cleanWs()
+                // ============================================================================
+                // 4) PERFORMANCE (secuencial para evitar conflicto de puerto 5000 de Flack)
+                // ============================================================================
+                stage('Performance') {
+                    agent { label 'Agente_Windows_1' }
+                    steps {
+                        cleanWs()
+                        unstash 'src'
+
+                        bat '''
+                            whoami
+                            hostname
+                            echo WORKSPACE=%WORKSPACE%
+                            echo NODE_NAME=%NODE_NAME%
+                            echo EXECUTOR_NUMBER=%EXECUTOR_NUMBER%
+                        '''
+
+                        // Levantar Flask
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            bat """
+                                set FLASK_APP=app\\api.py
+                                start "FLASK_JENKINS_PERF" /MIN "${env.PYTHON}" -m flask run
+                            """
+                        }
+
+                        // Esperar a que esté listo
+                        timeout(time: 1, unit: 'MINUTES') {
+                            script {
+                                waitUntil {
+                                    def status = bat(
+                                        returnStatus: true, 
+                                        script: '''
+                                            curl -s http://localhost:5000/ >NUL 2>&1 || exit /b 1
+                                        '''
+                                    )
+                                    return (status == 0)
+                                }
+                            }
+                        }
+
+                        // JMeter + reporte Jenkins
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            bat """
+                                if exist "${env.JMETER_JTL}" del /F /Q "${env.JMETER_JTL}"
+                                "${env.JMETER}" -n -t test\\jmeter\\flask.jmx -l "${env.JMETER_JTL}"
+                            """
+                            perfReport sourceDataFiles: "${env.JMETER_JTL}"
+                        }
+                    }
+                    post {
+                        always {
+                            bat '''
+                                taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS_PERF" /T >NUL 2>&1 || echo Flask ya parado
+                            '''
+                            cleanWs()
+                        }
+                    }
                 }
             }
         }
