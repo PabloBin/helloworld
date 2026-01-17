@@ -148,7 +148,7 @@ pipeline {
                                 "${env.PYTHON}" -m coverage run --branch --source=app --omit=app\\__init__.py,app\\api.py ^
                                     -m pytest -o junit_suite_name=unit --junitxml=${env.UNIT_XML} test\\unit
 
-                                "${env.PYTHON}" -m coverage xml -o ${env.COV_XML}
+                                "${env.PYTHON}" -m coverage xml -o ${env.COV_XML} --relative-files
                             """
                         }
 
@@ -238,8 +238,9 @@ pipeline {
                     agent { label 'Agente_Windows_1' }
                     steps {
                         cleanWs()
-                        unstash 'coverage-files'
+                        
                         unstash 'src'
+                        unstash 'coverage-files'
 
                         bat '''
                             whoami
