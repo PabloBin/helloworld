@@ -20,7 +20,7 @@ pipeline {
         stage('Get Code') {
             steps {
                 cleanWs()
-                git 'https://github.com/PabloBin/helloworld.git'
+                checkout scm
             }
         }
 
