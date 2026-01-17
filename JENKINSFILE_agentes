@@ -34,7 +34,7 @@ pipeline {
                     echo EXECUTOR_NUMBER=%EXECUTOR_NUMBER%
                 '''
 
-                git 'https://github.com/PabloBin/helloworld.git'
+                checkout scm
 
                 // Compartimos el repo con los demás agentes
                 stash name: 'src', includes: '**/*'
