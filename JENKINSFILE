@@ -205,7 +205,6 @@ pipeline {
                     bat '''
                         taskkill /F /FI "WINDOWTITLE eq FLASK_JENKINS_PERF" /T >NUL 2>&1 || echo Flask ya parado
                     '''
-                    cleanWs()
                 }
             }
         }
